@@ -20,7 +20,12 @@ def generate_neural_gaussians(viewpoint_camera, pc : GaussianModel, visible_mask
     if visible_mask is None:
         visible_mask = torch.ones(pc.get_anchor.shape[0], dtype=torch.bool, device = pc.get_anchor.device)
     
-    feat = pc._anchor_feat[visible_mask]
+    # feat = pc._anchor_feat[visible_mask]
+
+    feat_color = pc._anchor_feat_color[visible_mask]
+    feat_sr = pc._anchor_feat_sr[visible_mask]
+    feat_opacity = pc._anchor_feat_opacity[visible_mask]
+    # print("PC anchor_feat_opacity.shape:",feat_opacity.shape)
     anchor = pc.get_anchor[visible_mask]
     grid_offsets = pc._offset[visible_mask]
     grid_scaling = pc.get_scaling[visible_mask]
@@ -34,30 +39,83 @@ def generate_neural_gaussians(viewpoint_camera, pc : GaussianModel, visible_mask
 
     ## view-adaptive feature
     if pc.use_feat_bank:
+        # cat_view = torch.cat([ob_view, ob_dist], dim=1)
+        
+        # bank_weight = pc.get_featurebank_mlp(cat_view).unsqueeze(dim=1) # [n, 1, 3]
+
+        # ## multi-resolution feat
+        # feat = feat.unsqueeze(dim=-1)
+        # feat = feat[:,::4, :1].repeat([1,4,1])*bank_weight[:,:,:1] + \
+        #     feat[:,::2, :1].repeat([1,2,1])*bank_weight[:,:,1:2] + \
+        #     feat[:,::1, :1]*bank_weight[:,:,2:]
+        # feat = feat.squeeze(dim=-1) # [n, c]
+
+        #================================================================================================
         cat_view = torch.cat([ob_view, ob_dist], dim=1)
         
         bank_weight = pc.get_featurebank_mlp(cat_view).unsqueeze(dim=1) # [n, 1, 3]
 
         ## multi-resolution feat
-        feat = feat.unsqueeze(dim=-1)
-        feat = feat[:,::4, :1].repeat([1,4,1])*bank_weight[:,:,:1] + \
-            feat[:,::2, :1].repeat([1,2,1])*bank_weight[:,:,1:2] + \
-            feat[:,::1, :1]*bank_weight[:,:,2:]
-        feat = feat.squeeze(dim=-1) # [n, c]
+        feat_color = feat_color.unsqueeze(dim=-1)
+        feat_color = feat_color[:,::4, :1].repeat([1,4,1])*bank_weight[:,:,:1] + \
+            feat_color[:,::2, :1].repeat([1,2,1])*bank_weight[:,:,1:2] + \
+            feat_color[:,::1, :1]*bank_weight[:,:,2:]
+        feat_color = feat_color.squeeze(dim=-1) # [n, c]
+
+        #================================================================================================
+
+        ## multi-resolution feat
+        feat_sr = feat_sr.unsqueeze(dim=-1)
+        feat_sr = feat_sr[:,::4, :1].repeat([1,4,1])*bank_weight[:,:,:1] + \
+            feat_sr[:,::2, :1].repeat([1,2,1])*bank_weight[:,:,1:2] + \
+            feat_sr[:,::1, :1]*bank_weight[:,:,2:]
+        feat_sr = feat_sr.squeeze(dim=-1) # [n, c]
+
+        #================================================================================================
+
+        ## multi-resolution feat
+        feat_opacity = feat_opacity.unsqueeze(dim=-1)
+        feat_opacity = feat_opacity[:,::4, :1].repeat([1,4,1])*bank_weight[:,:,:1] + \
+            feat_opacity[:,::2, :1].repeat([1,2,1])*bank_weight[:,:,1:2] + \
+            feat_opacity[:,::1, :1]*bank_weight[:,:,2:]
+        feat_opacity = feat_opacity.squeeze(dim=-1) # [n, c]
 
 
-    cat_local_view = torch.cat([feat, ob_view, ob_dist], dim=1) # [N, c+3+1]
-    cat_local_view_wodist = torch.cat([feat, ob_view], dim=1) # [N, c+3]
+
+    # cat_local_view = torch.cat([feat, ob_view, ob_dist], dim=1) # [N, c+3+1]
+    # cat_local_view_wodist = torch.cat([feat, ob_view], dim=1) # [N, c+3]
+    # if pc.appearance_dim > 0:
+    #     camera_indicies = torch.ones_like(cat_local_view[:,0], dtype=torch.long, device=ob_dist.device) * viewpoint_camera.uid
+    #     # camera_indicies = torch.ones_like(cat_local_view[:,0], dtype=torch.long, device=ob_dist.device) * 10
+    #     appearance = pc.get_appearance(camera_indicies)
+
+    cat_local_view_color = torch.cat([feat_color, ob_view, ob_dist], dim=1) # [N, c+3+1]
+    cat_local_view_wodist_color = torch.cat([feat_color, ob_view], dim=1) # [N, c+3]
     if pc.appearance_dim > 0:
-        camera_indicies = torch.ones_like(cat_local_view[:,0], dtype=torch.long, device=ob_dist.device) * viewpoint_camera.uid
+        camera_indicies = torch.ones_like(cat_local_view_color[:,0], dtype=torch.long, device=ob_dist.device) * viewpoint_camera.uid
         # camera_indicies = torch.ones_like(cat_local_view[:,0], dtype=torch.long, device=ob_dist.device) * 10
-        appearance = pc.get_appearance(camera_indicies)
+        appearance_color = pc.get_appearance(camera_indicies)
+
+    cat_local_view_sr = torch.cat([feat_sr, ob_view, ob_dist], dim=1) # [N, c+3+1]
+    cat_local_view_wodist_sr = torch.cat([feat_sr, ob_view], dim=1) # [N, c+3]
+    if pc.appearance_dim > 0:
+        camera_indicies = torch.ones_like(cat_local_view_sr[:,0], dtype=torch.long, device=ob_dist.device) * viewpoint_camera.uid
+        # camera_indicies = torch.ones_like(cat_local_view[:,0], dtype=torch.long, device=ob_dist.device) * 10
+        appearance_sr = pc.get_appearance(camera_indicies)
+
+    cat_local_view_opacity = torch.cat([feat_opacity, ob_view, ob_dist], dim=1) # [N, c+3+1]
+    cat_local_view_wodist_opacity = torch.cat([feat_opacity, ob_view], dim=1) # [N, c+3]
+    if pc.appearance_dim > 0:
+        camera_indicies = torch.ones_like(cat_local_view_opacity[:,0], dtype=torch.long, device=ob_dist.device) * viewpoint_camera.uid
+        # camera_indicies = torch.ones_like(cat_local_view[:,0], dtype=torch.long, device=ob_dist.device) * 10
+        appearance_opacity = pc.get_appearance(camera_indicies)
 
     # get offset's opacity
     if pc.add_opacity_dist:
-        neural_opacity = pc.get_opacity_mlp(cat_local_view) # [N, k]
+        neural_opacity = pc.get_opacity_mlp(cat_local_view_opacity) # [N, k]
     else:
-        neural_opacity = pc.get_opacity_mlp(cat_local_view_wodist)
+        # print("cat_local_view_wodist_opacity.shape:",cat_local_view_wodist_opacity.shape)
+        neural_opacity = pc.get_opacity_mlp(cat_local_view_wodist_opacity)
 
     # opacity mask generation
     neural_opacity = neural_opacity.reshape([-1, 1])
@@ -70,21 +128,21 @@ def generate_neural_gaussians(viewpoint_camera, pc : GaussianModel, visible_mask
     # get offset's color
     if pc.appearance_dim > 0:
         if pc.add_color_dist:
-            color = pc.get_color_mlp(torch.cat([cat_local_view, appearance], dim=1))
+            color = pc.get_color_mlp(torch.cat([cat_local_view_color, appearance_color], dim=1))
         else:
-            color = pc.get_color_mlp(torch.cat([cat_local_view_wodist, appearance], dim=1))
+            color = pc.get_color_mlp(torch.cat([cat_local_view_wodist_color, appearance_color], dim=1))
     else:
         if pc.add_color_dist:
-            color = pc.get_color_mlp(cat_local_view)
+            color = pc.get_color_mlp(cat_local_view_color)
         else:
-            color = pc.get_color_mlp(cat_local_view_wodist)
+            color = pc.get_color_mlp(cat_local_view_wodist_color)
     color = color.reshape([anchor.shape[0]*pc.n_offsets, 3])# [mask]
 
     # get offset's cov
     if pc.add_cov_dist:
-        scale_rot = pc.get_cov_mlp(cat_local_view)
+        scale_rot = pc.get_cov_mlp(cat_local_view_sr)
     else:
-        scale_rot = pc.get_cov_mlp(cat_local_view_wodist)
+        scale_rot = pc.get_cov_mlp(cat_local_view_wodist_sr)
     scale_rot = scale_rot.reshape([anchor.shape[0]*pc.n_offsets, 7]) # [mask]
     
     # offsets

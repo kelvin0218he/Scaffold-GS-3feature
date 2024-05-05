@@ -76,7 +76,11 @@ class GaussianModel:
 
         self._anchor = torch.empty(0)
         self._offset = torch.empty(0)
-        self._anchor_feat = torch.empty(0)
+        # self._anchor_feat = torch.empty(0)
+
+        self._anchor_feat_color = torch.empty(0)
+        self._anchor_feat_sr = torch.empty(0)
+        self._anchor_feat_opacity = torch.empty(0)
         
         self.opacity_accum = torch.empty(0)
 
@@ -251,7 +255,12 @@ class GaussianModel:
         points = self.voxelize_sample(points, voxel_size=self.voxel_size)
         fused_point_cloud = torch.tensor(np.asarray(points)).float().cuda()
         offsets = torch.zeros((fused_point_cloud.shape[0], self.n_offsets, 3)).float().cuda()
-        anchors_feat = torch.zeros((fused_point_cloud.shape[0], self.feat_dim)).float().cuda()
+        # anchors_feat = torch.zeros((fused_point_cloud.shape[0], self.feat_dim)).float().cuda()
+
+        anchors_feat_color = torch.zeros((fused_point_cloud.shape[0], self.feat_dim)).float().cuda()    
+        anchors_feat_sr = torch.zeros((fused_point_cloud.shape[0], self.feat_dim)).float().cuda()
+        anchors_feat_opacity = torch.zeros((fused_point_cloud.shape[0], self.feat_dim)).float().cuda()
+
         
         print("Number of points at initialisation : ", fused_point_cloud.shape[0])
 
@@ -265,7 +274,12 @@ class GaussianModel:
 
         self._anchor = nn.Parameter(fused_point_cloud.requires_grad_(True))
         self._offset = nn.Parameter(offsets.requires_grad_(True))
-        self._anchor_feat = nn.Parameter(anchors_feat.requires_grad_(True))
+        # self._anchor_feat = nn.Parameter(anchors_feat.requires_grad_(True))
+
+        self._anchor_feat_color = nn.Parameter(anchors_feat_color.requires_grad_(True))
+        self._anchor_feat_sr = nn.Parameter(anchors_feat_sr.requires_grad_(True))
+        self._anchor_feat_opacity = nn.Parameter(anchors_feat_opacity.requires_grad_(True))
+
         self._scaling = nn.Parameter(scales.requires_grad_(True))
         self._rotation = nn.Parameter(rots.requires_grad_(False))
         self._opacity = nn.Parameter(opacities.requires_grad_(False))
@@ -316,7 +330,12 @@ class GaussianModel:
             l = [
                 {'params': [self._anchor], 'lr': training_args.position_lr_init * self.spatial_lr_scale, "name": "anchor"},
                 {'params': [self._offset], 'lr': training_args.offset_lr_init * self.spatial_lr_scale, "name": "offset"},
-                {'params': [self._anchor_feat], 'lr': training_args.feature_lr, "name": "anchor_feat"},
+                # {'params': [self._anchor_feat], 'lr': training_args.feature_lr, "name": "anchor_feat"},
+
+                {'params': [self._anchor_feat_color], 'lr': training_args.feature_lr, "name": "anchor_feat_color"},
+                {'params': [self._anchor_feat_sr], 'lr': training_args.feature_lr, "name": "anchor_feat_sr"},
+                {'params': [self._anchor_feat_opacity], 'lr': training_args.feature_lr, "name": "anchor_feat_opacity"},
+
                 {'params': [self._opacity], 'lr': training_args.opacity_lr, "name": "opacity"},
                 {'params': [self._scaling], 'lr': training_args.scaling_lr, "name": "scaling"},
                 {'params': [self._rotation], 'lr': training_args.rotation_lr, "name": "rotation"},
@@ -391,8 +410,16 @@ class GaussianModel:
         l = ['x', 'y', 'z', 'nx', 'ny', 'nz']
         for i in range(self._offset.shape[1]*self._offset.shape[2]):
             l.append('f_offset_{}'.format(i))
-        for i in range(self._anchor_feat.shape[1]):
-            l.append('f_anchor_feat_{}'.format(i))
+        # for i in range(self._anchor_feat.shape[1]):
+        #     l.append('f_anchor_feat_{}'.format(i))
+
+        for i in range(self._anchor_feat_color.shape[1]):
+            l.append('f_anchor_feat_color_{}'.format(i))
+        for i in range(self._anchor_feat_sr.shape[1]):
+            l.append('f_anchor_feat_sr_{}'.format(i))
+        for i in range(self._anchor_feat_opacity.shape[1]):
+            l.append('f_anchor_feat_opacity_{}'.format(i))
+
         l.append('opacity')
         for i in range(self._scaling.shape[1]):
             l.append('scale_{}'.format(i))
@@ -405,7 +432,12 @@ class GaussianModel:
 
         anchor = self._anchor.detach().cpu().numpy()
         normals = np.zeros_like(anchor)
-        anchor_feat = self._anchor_feat.detach().cpu().numpy()
+        # anchor_feat = self._anchor_feat.detach().cpu().numpy()
+
+        anchor_feat_color = self._anchor_feat_color.detach().cpu().numpy()
+        anchor_feat_sr = self._anchor_feat_sr.detach().cpu().numpy()
+        anchor_feat_opacity = self._anchor_feat_opacity.detach().cpu().numpy()
+
         offset = self._offset.detach().transpose(1, 2).flatten(start_dim=1).contiguous().cpu().numpy()
         opacities = self._opacity.detach().cpu().numpy()
         scale = self._scaling.detach().cpu().numpy()
@@ -414,7 +446,7 @@ class GaussianModel:
         dtype_full = [(attribute, 'f4') for attribute in self.construct_list_of_attributes()]
 
         elements = np.empty(anchor.shape[0], dtype=dtype_full)
-        attributes = np.concatenate((anchor, normals, offset, anchor_feat, opacities, scale, rotation), axis=1)
+        attributes = np.concatenate((anchor, normals, offset,anchor_feat_color,anchor_feat_sr,anchor_feat_opacity, opacities, scale, rotation), axis=1)
         elements[:] = list(map(tuple, attributes))
         el = PlyElement.describe(elements, 'vertex')
         PlyData([el]).write(path)
@@ -439,12 +471,45 @@ class GaussianModel:
         for idx, attr_name in enumerate(rot_names):
             rots[:, idx] = np.asarray(plydata.elements[0][attr_name]).astype(np.float32)
         
-        # anchor_feat
-        anchor_feat_names = [p.name for p in plydata.elements[0].properties if p.name.startswith("f_anchor_feat")]
-        anchor_feat_names = sorted(anchor_feat_names, key = lambda x: int(x.split('_')[-1]))
-        anchor_feats = np.zeros((anchor.shape[0], len(anchor_feat_names)))
-        for idx, attr_name in enumerate(anchor_feat_names):
-            anchor_feats[:, idx] = np.asarray(plydata.elements[0][attr_name]).astype(np.float32)
+        # # anchor_feat
+        # anchor_feat_names = [p.name for p in plydata.elements[0].properties if p.name.startswith("f_anchor_feat")]
+        # anchor_feat_names = sorted(anchor_feat_names, key = lambda x: int(x.split('_')[-1]))
+        # anchor_feats = np.zeros((anchor.shape[0], len(anchor_feat_names)))
+        # for idx, attr_name in enumerate(anchor_feat_names):
+        #     anchor_feats[:, idx] = np.asarray(plydata.elements[0][attr_name]).astype(np.float32)
+
+        # # anchor_feat_color
+        # anchor_feat_color_names = [p.name for p in plydata.elements[0].properties if p.name.startswith("f_anchor_feat_color")]
+        # anchor_feat_color_names = sorted(anchor_feat_color_names, key = lambda x: int(x.split('_')[-1]))
+        # anchor_feats_color = np.zeros((anchor.shape[0], len(anchor_feat_color_names)))
+        # for idx, attr_name in enumerate(anchor_feat_color_names):
+        #     anchor_feats_color[:, idx] = np.asarray(plydata.elements[0][attr_name]).astype(np.float32)
+
+        # # anchor_feat_sr
+        # anchor_feat_sr_names = [p.name for p in plydata.elements[0].properties if p.name.startswith("f_anchor_feat_sr")]
+        # anchor_feat_sr_names = sorted(anchor_feat_sr_names, key = lambda x: int(x.split('_')[-1]))
+        # anchor_feats_sr = np.zeros((anchor.shape[0], len(anchor_feat_sr_names)))
+        # for idx, attr_name in enumerate(anchor_feat_sr_names):
+        #     anchor_feats_sr[:, idx] = np.asarray(plydata.elements[0][attr_name]).astype(np.float32)
+
+        # # anchor_feat_opacity
+        # anchor_feat_opacity_names = [p.name for p in plydata.elements[0].properties if p.name.startswith("f_anchor_feat_opcity")]
+        # anchor_feat_opacity_names = sorted(anchor_feat_opacity_names, key = lambda x: int(x.split('_')[-1]))
+        # anchor_feats_opacity = np.zeros((anchor.shape[0], len(anchor_feat_opacity_names)))
+        # for idx, attr_name in enumerate(anchor_feat_opacity_names):
+        #     anchor_feats_opacity[:, idx] = np.asarray(plydata.elements[0][attr_name]).astype(np.float32)
+
+        # 
+        anchor_feat_color_names = sorted([p.name for p in plydata.elements[0].properties if p.name.startswith("f_anchor_feat_color")], key=lambda x: int(x.split('_')[-1]))
+        anchor_feats_color = np.stack([np.asarray(plydata.elements[0][name]).astype(np.float32) for name in anchor_feat_color_names], axis=1)
+
+        # 
+        anchor_feat_sr_names = sorted([p.name for p in plydata.elements[0].properties if p.name.startswith("f_anchor_feat_sr")], key=lambda x: int(x.split('_')[-1]))
+        anchor_feats_sr = np.stack([np.asarray(plydata.elements[0][name]).astype(np.float32) for name in anchor_feat_sr_names], axis=1)
+
+        # 
+        anchor_feat_opacity_names = sorted([p.name for p in plydata.elements[0].properties if p.name.startswith("f_anchor_feat_opacity")], key=lambda x: int(x.split('_')[-1]))
+        anchor_feats_opacity = np.stack([np.asarray(plydata.elements[0][name]).astype(np.float32) for name in anchor_feat_opacity_names], axis=1)
 
         offset_names = [p.name for p in plydata.elements[0].properties if p.name.startswith("f_offset")]
         offset_names = sorted(offset_names, key = lambda x: int(x.split('_')[-1]))
@@ -453,7 +518,11 @@ class GaussianModel:
             offsets[:, idx] = np.asarray(plydata.elements[0][attr_name]).astype(np.float32)
         offsets = offsets.reshape((offsets.shape[0], 3, -1))
         
-        self._anchor_feat = nn.Parameter(torch.tensor(anchor_feats, dtype=torch.float, device="cuda").requires_grad_(True))
+        # self._anchor_feat = nn.Parameter(torch.tensor(anchor_feats, dtype=torch.float, device="cuda").requires_grad_(True))
+
+        self._anchor_feat_color = nn.Parameter(torch.tensor(anchor_feats_color, dtype=torch.float, device="cuda").requires_grad_(True))
+        self._anchor_feat_sr = nn.Parameter(torch.tensor(anchor_feats_sr, dtype=torch.float, device="cuda").requires_grad_(True))
+        self._anchor_feat_opacity = nn.Parameter(torch.tensor(anchor_feats_opacity, dtype=torch.float, device="cuda").requires_grad_(True))
 
         self._offset = nn.Parameter(torch.tensor(offsets, dtype=torch.float, device="cuda").transpose(1, 2).contiguous().requires_grad_(True))
         self._anchor = nn.Parameter(torch.tensor(anchor, dtype=torch.float, device="cuda").requires_grad_(True))
@@ -573,7 +642,12 @@ class GaussianModel:
 
         self._anchor = optimizable_tensors["anchor"]
         self._offset = optimizable_tensors["offset"]
-        self._anchor_feat = optimizable_tensors["anchor_feat"]
+        # self._anchor_feat = optimizable_tensors["anchor_feat"]
+
+        self._anchor_feat_color = optimizable_tensors["anchor_feat_color"]
+        self._anchor_feat_sr = optimizable_tensors["anchor_feat_sr"]
+        self._anchor_feat_opacity = optimizable_tensors["anchor_feat_opacity"]
+
         self._opacity = optimizable_tensors["opacity"]
         self._scaling = optimizable_tensors["scaling"]
         self._rotation = optimizable_tensors["rotation"]
@@ -642,9 +716,22 @@ class GaussianModel:
 
                 new_opacities = inverse_sigmoid(0.1 * torch.ones((candidate_anchor.shape[0], 1), dtype=torch.float, device="cuda"))
 
-                new_feat = self._anchor_feat.unsqueeze(dim=1).repeat([1, self.n_offsets, 1]).view([-1, self.feat_dim])[candidate_mask]
+                # new_feat = self._anchor_feat.unsqueeze(dim=1).repeat([1, self.n_offsets, 1]).view([-1, self.feat_dim])[candidate_mask]
 
-                new_feat = scatter_max(new_feat, inverse_indices.unsqueeze(1).expand(-1, new_feat.size(1)), dim=0)[0][remove_duplicates]
+                # new_feat = scatter_max(new_feat, inverse_indices.unsqueeze(1).expand(-1, new_feat.size(1)), dim=0)[0][remove_duplicates]
+
+                new_feat_color = self._anchor_feat_color.unsqueeze(dim=1).repeat([1, self.n_offsets, 1]).view([-1, self.feat_dim])[candidate_mask]
+
+                new_feat_color = scatter_max(new_feat_color, inverse_indices.unsqueeze(1).expand(-1, new_feat_color.size(1)), dim=0)[0][remove_duplicates]
+
+                new_feat_sr = self._anchor_feat_sr.unsqueeze(dim=1).repeat([1, self.n_offsets, 1]).view([-1, self.feat_dim])[candidate_mask]
+
+                new_feat_sr = scatter_max(new_feat_sr, inverse_indices.unsqueeze(1).expand(-1, new_feat_sr.size(1)), dim=0)[0][remove_duplicates]
+
+                new_feat_opacity = self._anchor_feat_opacity.unsqueeze(dim=1).repeat([1, self.n_offsets, 1]).view([-1, self.feat_dim])[candidate_mask]
+
+                new_feat_opacity = scatter_max(new_feat_opacity, inverse_indices.unsqueeze(1).expand(-1, new_feat_opacity.size(1)), dim=0)[0][remove_duplicates]
+
 
                 new_offsets = torch.zeros_like(candidate_anchor).unsqueeze(dim=1).repeat([1,self.n_offsets,1]).float().cuda()
 
@@ -652,7 +739,12 @@ class GaussianModel:
                     "anchor": candidate_anchor,
                     "scaling": new_scaling,
                     "rotation": new_rotation,
-                    "anchor_feat": new_feat,
+                    # "anchor_feat": new_feat,
+
+                    "anchor_feat_color": new_feat_color,
+                    "anchor_feat_sr": new_feat_sr,
+                    "anchor_feat_opacity": new_feat_opacity,
+
                     "offset": new_offsets,
                     "opacity": new_opacities,
                 }
@@ -672,7 +764,12 @@ class GaussianModel:
                 self._anchor = optimizable_tensors["anchor"]
                 self._scaling = optimizable_tensors["scaling"]
                 self._rotation = optimizable_tensors["rotation"]
-                self._anchor_feat = optimizable_tensors["anchor_feat"]
+                # self._anchor_feat = optimizable_tensors["anchor_feat"]
+
+                self._anchor_feat_color = optimizable_tensors["anchor_feat_color"]
+                self._anchor_feat_sr = optimizable_tensors["anchor_feat_sr"]
+                self._anchor_feat_opacity = optimizable_tensors["anchor_feat_opacity"]
+
                 self._offset = optimizable_tensors["offset"]
                 self._opacity = optimizable_tensors["opacity"]
                 
