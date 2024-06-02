@@ -61,9 +61,9 @@ class GaussianModel:
 
         self.feat_dim = feat_dim
 
-        self.color_feat_dim = 16
-        self.sr_feat_dim = 16
-        self.opacity_feat_dim = 16
+        self.color_feat_dim = feat_dim
+        self.sr_feat_dim = feat_dim
+        self.opacity_feat_dim = feat_dim
 
         self.n_offsets = n_offsets
         self.voxel_size = voxel_size
