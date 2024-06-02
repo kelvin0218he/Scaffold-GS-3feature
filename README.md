@@ -1,7 +1,7 @@
 # Scaffold-GS with 3 different feature
 
-This is an ablation study for Scaffold-GS
-This is an experiment that tests if different feature for different ML
+This is an ablation study for Scaffold-GS.
+This experiment tests if different feature for different MLP will get better rendering quality.
 
 
 
