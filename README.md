@@ -1,60 +1,9 @@
-# Scaffold-GS: Structured 3D Gaussians for View-Adaptive Rendering
+# Scaffold-GS with 3 different feature
 
-[Tao Lu](https://github.com/inspirelt), [Mulin Yu](https://scholar.google.com/citations?user=w0Od3hQAAAAJ), [Linning Xu](https://eveneveno.github.io/lnxu), [Yuanbo Xiangli](https://kam1107.github.io/), [Limin Wang](https://wanglimin.github.io/), [Dahua Lin](http://dahua.site/), [Bo Dai](https://daibo.info/) <br />
-
-
-[[`Project Page`](https://city-super.github.io/scaffold-gs/)][[`arxiv`](https://arxiv.org/abs/2312.00109)]
-
-## News
-**[2024.04.05]**  Scaffold-GS is selected as a 🎈**highlight** in CVPR2024.
-
-**[2024.03.27]**  🎈We release [Octree-GS](https://city-super.github.io/octree-gs), supporting an explicit *LOD* representation, rendering faster in large-scale scene with high quality.
-
-**[2024.03.26]**  🎈We release [GSDF](https://city-super.github.io/GSDF/), which improves rendering and reconstruction quality simultaneously.
-
-**[2024.02.27]**  Accepted to [CVPR 2024](https://cvpr.thecvf.com/).
-
-**[2024.01.22]**  We add the appearance embedding to Scaffold-GS to handle wild scenes.
-
-**[2024.01.22]** 🎈👀 The [viewer](https://github.com/city-super/Scaffold-GS/tree/main/SIBR_viewers) for Scaffold-GS is available now. 
-
-**[2023.12.10]** We release the code.
-
-## TODO List
-- [ ] Explore on removing the MLP module
-- [ ] Improve the training configuration system
-
-## Overview
-
-<p align="center">
-<img src="assets/pipeline.png" width=100% height=100% 
-class="center">
-</p>
+This is an ablation study for Scaffold-GS
+This is an experiment that tests if different feature for different ML
 
 
-We introduce Scaffold-GS, which uses anchor points to distribute local 3D Gaussians, and predicts their attributes on-the-fly based on viewing direction and distance within the view frustum.
-
-Our method performs superior on scenes with challenging observing views. e.g. transparency, specularity, reflection, texture-less regions and fine-scale details.
-
-<p align="center">
-<img src="assets/teaser_big.png" width=100% height=100% 
-class="center">
-</p>
-
-
-
-
-
-## Installation
-
-We tested on a server configured with Ubuntu 18.04, cuda 11.6 and gcc 9.4.0. Other similar configurations should also work, but we have not verified each one individually.
-
-1. Clone this repo:
-
-```
-git clone https://github.com/city-super/Scaffold-GS.git --recursive
-cd Scaffold-GS
-```
 
 2. Install dependencies
 
